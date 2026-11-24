@@ -1,0 +1,106 @@
+set.seed(45)
+
+# MSCI World EUR net returns, 10-year historical estimates 
+cagr <- 0.1274 # This is a historical estimate, we have a that in a span of 10 years MSCI World grew by a factor of approximately (1 + cagr)^10.
+sigma <- 0.1344 # This is a historical estimate of the annualized volatility of MSCI World EUR net returns.
+
+# Convert CAGR into lognormal drift
+mu <- log1p(cagr) + sigma^2 / 2
+
+# Monte Carlo optimization
+N <- 100000
+
+X <- exp(mu - sigma^2 / 2 +sigma * rnorm(N)) # We assume that yearly returns a log_normal distributed. We want that E[log X]=log(1+X).
+
+
+
+g <- function(f) {
+  mean(log1p(f * (X - 1)))
+}# We bet a fraction f of our wealth. That means the wealth multiplies by 1 + f * (X - 1) each year. We want to maximize log(1+f*(X_1))=log1p(f*(X_1-1)) in expectation.
+
+
+result <- optimize(g, c(0, 1), maximum = TRUE) #This gives the optimal fraction f that maximizes the expected log return. Increase volatility sigma such that sigma^2\leq 2log1p(cagr)
+#to get an optimal fraction f less than 1.
+
+f <- if (g(1) >= result$objective) 1 else result$maximum
+
+cat("Optimal fraction:", f, "\n")
+
+# Simulate 30 years
+years <- 30
+N_paths <- 10000
+
+Z <- matrix(rnorm(years * N_paths), nrow = years)
+
+X_paths <- exp(mu - sigma^2 / 2 + sigma * Z)
+
+returns <- 1 + f * (X_paths - 1) # Everything as above but now we take the optimal fraction f for each simulated path.
+
+wealth <- rbind(1, apply(returns, 2, cumprod)) 
+peaks <- apply(wealth, 2, cummax)
+final_wealth <- wealth[years + 1, ]
+print(hist(final_wealth))
+losses <- final_wealth < 1
+cat("Probability of loss:", mean(losses), "\n")
+cat("Total losses:", sum(losses), "\n")
+drawdowns <- apply(1 - wealth / peaks, 2, max)
+
+cat("Mean final wealth:",
+    mean(wealth[years + 1, ]), "\n")
+
+cat("Median final wealth:",
+    median(wealth[years + 1, ]), "\n")
+
+cat("Probability of 50% drawdown:",
+    mean(drawdowns >= 0.5), "\n")
+cat("Maximum drawdown:",
+    max(drawdowns), "\n")
+cat("peaks:",
+    max(peaks[years + 1, ]), "\n")
+
+#Now we want to maximize E[log(1+f(X-1))] subject to the constraint that the probability of a drawdown more than d% is below a certain threshold alpha.
+
+# Evaluate one investment fraction
+evaluate <- function(f) {
+
+  returns <- 1 + f * (X_paths - 1)
+
+  wealth <- rbind(1, apply(returns, 2, cumprod))
+  peaks <- apply(wealth, 2, cummax)
+
+  drawdowns <- apply(1 - wealth / peaks, 2, max)
+
+  c(
+    growth = mean(log(returns)),
+    risk = mean(drawdowns >= 0.25)
+  )
+}
+
+# Evaluate fractions from 0% to 100%
+fractions <- seq(0, 1, by = 0.01)
+
+results <- t(sapply(fractions, evaluate))
+
+# Find fractions satisfying the risk constraint
+valid <- which(results[, "risk"] <= 0.10)
+
+# Maximize growth among valid fractions
+best <- valid[which.max(results[valid, "growth"])]
+
+cat("Optimal fraction:", fractions[best], "\n")
+cat("Estimated drawdown probability:",
+    results[best, "risk"], "\n")
+
+# Plot growth
+plot(fractions, results[, "growth"],
+     type = "l",
+     xlab = "Investment fraction",
+     ylab = "Expected log growth")
+
+# Plot risk
+plot(fractions, results[, "risk"],
+     type = "l",
+     xlab = "Investment fraction",
+     ylab = "Probability of 40% drawdown")
+
+abline(h = 0.10, lty = 2)

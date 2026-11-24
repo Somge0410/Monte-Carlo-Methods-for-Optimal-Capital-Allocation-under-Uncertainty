@@ -1,7 +1,7 @@
 
-set.seed(42)
+set.seed(43)
 
-p <- 0.51
+p <- 0.48
 rounds <- 200
 N <- 10000
 
@@ -12,7 +12,7 @@ wins <- matrix(
 )
 
 analyze <- function(f) {
-  returns <- ifelse(wins == 1, 1 + 1.2*f, 1 - f)
+  returns <- ifelse(wins == 1, 1 + 1.8*f, 1 - f)
 
   # Wealth evolution, starting at 1
   wealth <- rbind(1, apply(returns, 2, cumprod))
@@ -25,8 +25,10 @@ analyze <- function(f) {
 
   c(
     median_final_wealth = median(wealth[rounds + 1, ]),
-    prob_drawdown_50 = mean(drawdowns >= 0.80)
+    prob_drawdown_50 = mean(drawdowns >= 0.85)
   )
 }
-
-print(sapply(c(0.05, 0.1, 0.11, 0.2, 0.21, 0.25, 0.3), analyze))
+best<- optimize(function(f) analyze(f)[1], c(0, 1), maximum = TRUE)
+print(best$maximum)
+print(analyze(best$maximum))
+print(sapply(c(0.15,0.2,0.25), analyze))
